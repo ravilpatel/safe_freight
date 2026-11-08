@@ -44,8 +44,8 @@ function validateSqlFile(filePath: string): MigrationValidationResult {
     // Ignore comments
     if (trimmed.startsWith('--') || trimmed.startsWith('/*')) return;
 
-    // Check for DROP TABLE / DROP COLUMN / DROP POLICY without IF EXISTS
-    const dropTableMatch = trimmed.match(/\bDROP\s+TABLE\s+(?!IF\s+EXISTS\b)(\w+)/i);
+    // Check for DROP TABLE / DROP COLUMN / DROP POLICY without IF EXISTS (supporting quoted and unquoted identifiers)
+    const dropTableMatch = trimmed.match(/\bDROP\s+TABLE\s+(?!IF\s+EXISTS\b)(["\w]+)/i);
     if (dropTableMatch) {
       result.errors.push(
         `Line ${index + 1}: Unsafe DROP TABLE detected without IF EXISTS: "${trimmed}"`
@@ -53,7 +53,7 @@ function validateSqlFile(filePath: string): MigrationValidationResult {
       result.valid = false;
     }
 
-    const dropPolicyMatch = trimmed.match(/\bDROP\s+POLICY\s+(?!IF\s+EXISTS\b)(\w+)/i);
+    const dropPolicyMatch = trimmed.match(/\bDROP\s+POLICY\s+(?!IF\s+EXISTS\b)(["\w]+)/i);
     // Allow if inside DO $$ block with IF EXISTS check
     if (dropPolicyMatch && !content.includes('IF EXISTS') && !content.includes('pg_policies')) {
       result.warnings.push(

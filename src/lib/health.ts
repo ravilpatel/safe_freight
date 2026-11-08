@@ -23,16 +23,16 @@ export async function handleHealthCheck(reqPath: string = '/api/health'): Promis
 
   if (supabaseUrl && anonKey) {
     try {
-      // Ping Supabase PostgREST root or health
-      const res = await fetch(`${supabaseUrl}/rest/v1/`, {
-        method: 'HEAD',
+      // Ping Supabase Auth service health endpoint (returns HTTP 200 on live Supabase Cloud)
+      const res = await fetch(`${supabaseUrl}/auth/v1/health`, {
+        method: 'GET',
         headers: {
           apikey: anonKey,
           Authorization: `Bearer ${anonKey}`,
         },
         cache: 'no-store',
       });
-      dbStatus = res.ok || res.status === 404 || res.status === 200 ? 'connected' : 'disconnected';
+      dbStatus = res.ok || res.status === 200 ? 'connected' : 'disconnected';
     } catch {
       dbStatus = 'disconnected';
     }

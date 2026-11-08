@@ -1,6 +1,12 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Logger } from '@/lib/logger';
 import { handleHealthCheck } from '@/lib/health';
+
+// Load local environment for health check probe against Supabase Cloud
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 describe('Structured JSON Logger', () => {
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -53,6 +59,53 @@ describe('Structured JSON Logger', () => {
     expect(payload.app).toBe('SafeFreight');
     expect(payload.route).toBe('/api/v1/health');
   });
+
+  it('safely serializes objects with circular references without throwing', () => {
+    const logger = new Logger({ context: 'CircularTest' });
+    const circularObj: Record<string, unknown> = { name: 'circular_root' };
+    circularObj.self = circularObj;
+
+    expect(() => {
+      logger.info('Circular payload test', { ref: circularObj });
+    }).not.toThrow();
+
+    expect(consoleLogSpy).toHaveBeenCalled();
+    const printed = String(consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1][0]);
+    const parsed = JSON.parse(printed);
+    expect(parsed.ref.name).toBe('circular_root');
+    expect(parsed.ref.self).toBe('[Circular]');
+  });
+
+  it('serializes BigInt values as strings without throwing TypeError', () => {
+    const logger = new Logger({ context: 'BigIntTest' });
+    const bigNumber = 9007199254740991n;
+
+    expect(() => {
+      logger.info('BigInt payload test', { big_value: bigNumber });
+    }).not.toThrow();
+
+    expect(consoleLogSpy).toHaveBeenCalled();
+    const printed = String(consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1][0]);
+    const parsed = JSON.parse(printed);
+    expect(parsed.big_value).toBe('9007199254740991');
+  });
+
+  it('serializes Error instances extracting name, message, and stack', () => {
+    const logger = new Logger({ context: 'ErrorTest' });
+    const err = new Error('Database connection failed');
+
+    expect(() => {
+      logger.error('Error log test', { err });
+    }).not.toThrow();
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    const printed = String(consoleErrorSpy.mock.calls[consoleErrorSpy.mock.calls.length - 1][0]);
+    const parsed = JSON.parse(printed);
+    expect(parsed.err).toBeDefined();
+    expect(parsed.err.name).toBe('Error');
+    expect(parsed.err.message).toBe('Database connection failed');
+    expect(parsed.err.stack).toBeDefined();
+  });
 });
 
 describe('Health Endpoint Logic', () => {
@@ -62,14 +115,14 @@ describe('Health Endpoint Logic', () => {
 
     const data = await response.json();
     expect(data).toHaveProperty('status');
-    expect(['ok', 'healthy', 'degraded']).toContain(data.status);
+    expect(data.status).toBe('ok');
     expect(data.version).toBe('4.0.0');
     expect(data).toHaveProperty('timestamp');
     expect(data).toHaveProperty('uptime');
     expect(data).toHaveProperty('uptime_seconds');
     expect(data.services).toBeDefined();
     expect(data.services.system).toBe('operational');
-    expect(['connected', 'disconnected', 'unconfigured']).toContain(data.services.database);
+    expect(data.services.database).toBe('connected');
   });
 
   it('GET /api/health and GET /api/v1/health return HTTP 200 with JSON payload', async () => {
@@ -81,12 +134,14 @@ describe('Health Endpoint Logic', () => {
     const body1 = await res1.json();
     expect(body1.status).toBe('ok');
     expect(body1.version).toBe('4.0.0');
+    expect(body1.services.database).toBe('connected');
 
     const res2 = await getV1Health();
     expect(res2.status).toBe(200);
     const body2 = await res2.json();
     expect(body2.status).toBe('ok');
     expect(body2.version).toBe('4.0.0');
+    expect(body2.services.database).toBe('connected');
   });
 });
 

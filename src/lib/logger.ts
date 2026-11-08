@@ -24,6 +24,54 @@ export interface LoggerOptions {
   defaultMeta?: Record<string, unknown>;
 }
 
+/**
+ * Custom JSON replacer for structured logging:
+ * - Replaces circular references with "[Circular]"
+ * - Serializes BigInt values as strings
+ * - Serializes Error objects extracting name, message, and stack
+ */
+export function createSafeJsonReplacer() {
+  const seen = new WeakSet();
+  return function replacer(this: unknown, key: string, value: unknown): unknown {
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    if (value instanceof Error) {
+      const errorObj: Record<string, unknown> = {
+        name: value.name,
+        message: value.message,
+        stack: value.stack,
+      };
+      if ('code' in value) {
+        errorObj.code = (value as unknown as { code: unknown }).code;
+      }
+      return errorObj;
+    }
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+    }
+    return value;
+  };
+}
+
+export function safeJsonStringify(obj: unknown): string {
+  try {
+    return JSON.stringify(obj, createSafeJsonReplacer());
+  } catch (err: unknown) {
+    try {
+      return JSON.stringify({
+        fallback_error: 'SerializationFailed',
+        error_message: err instanceof Error ? err.message : String(err),
+      });
+    } catch {
+      return '{"fallback_error":"FatalSerializationFailed"}';
+    }
+  }
+}
+
 export class Logger {
   private context: string;
   private defaultMeta: Record<string, unknown>;
@@ -43,17 +91,32 @@ export class Logger {
       ...meta,
     };
 
-    const serialized = JSON.stringify(payload);
+    let serialized: string;
+    try {
+      serialized = safeJsonStringify(payload);
+    } catch {
+      serialized = JSON.stringify({
+        timestamp: payload.timestamp,
+        level,
+        context: this.context,
+        message,
+        serialization_fallback: true,
+      });
+    }
 
-    if (level === 'ERROR' || level === 'FATAL') {
-      // eslint-disable-next-line no-console
-      console.error(serialized);
-    } else if (level === 'WARN') {
-      // eslint-disable-next-line no-console
-      console.warn(serialized);
-    } else {
-      // eslint-disable-next-line no-console
-      console.log(serialized);
+    try {
+      if (level === 'ERROR' || level === 'FATAL') {
+        // eslint-disable-next-line no-console
+        console.error(serialized);
+      } else if (level === 'WARN') {
+        // eslint-disable-next-line no-console
+        console.warn(serialized);
+      } else {
+        // eslint-disable-next-line no-console
+        console.log(serialized);
+      }
+    } catch {
+      // Prevent console stream errors from crashing caller
     }
 
     return payload;

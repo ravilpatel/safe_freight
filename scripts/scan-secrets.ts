@@ -29,6 +29,19 @@ const SECRET_PATTERNS = [
   },
 ];
 
+const CLIENT_COMPONENT_RULES = [
+  {
+    name: 'CLIENT_COMPONENT_ADMIN_IMPORT',
+    regex: /(?:from\s+['"][^'"]*\/supabase\/admin(?:['"]|\.ts['"]))|(?:import\s*\(\s*['"][^'"]*\/supabase\/admin)/,
+    description: 'Client component must not import server-only admin Supabase module',
+  },
+  {
+    name: 'CLIENT_COMPONENT_ADMIN_CLIENT_CALL',
+    regex: /\bcreateAdminClient\b/,
+    description: 'Client component must not reference or call createAdminClient',
+  },
+];
+
 function scanDirectory(dir: string, violations: SecretScanViolation[]) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -63,6 +76,19 @@ function scanDirectory(dir: string, violations: SecretScanViolation[]) {
               match: line.trim(),
               rule: pattern.name + (isClientComponent ? ' (CLIENT_COMPONENT_LEAK)' : ''),
             });
+          }
+        }
+
+        if (isClientComponent) {
+          for (const rule of CLIENT_COMPONENT_RULES) {
+            if (rule.regex.test(line)) {
+              violations.push({
+                file: path.relative(process.cwd(), fullPath),
+                line: idx + 1,
+                match: line.trim(),
+                rule: `${rule.name} (CLIENT_COMPONENT_LEAK)`,
+              });
+            }
           }
         }
       });

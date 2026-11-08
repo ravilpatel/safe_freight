@@ -1,5 +1,11 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import ws from 'ws';
+
+// Node.js 20 SSR WebSocket polyfill for Supabase Realtime client
+if (typeof globalThis.WebSocket === 'undefined') {
+  (globalThis as unknown as { WebSocket: unknown }).WebSocket = ws;
+}
 
 export function createClient() {
   const cookieStore = cookies();
