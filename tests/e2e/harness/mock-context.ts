@@ -182,6 +182,58 @@ export class MultiTenantDatabaseSimulator {
     return results;
   }
 
+  selectOrganizations(session: SessionContext): { id: string; name: string; type: string }[] {
+    const org = this.organizations.get(session.tenantId);
+    return org ? [{ ...org }] : [];
+  }
+
+  selectProfiles(session: SessionContext): { id: string; tenant_id: string; role: string; name: string }[] {
+    const list: { id: string; tenant_id: string; role: string; name: string }[] = [];
+    for (const p of Array.from(this.profiles.values())) {
+      if (p.tenant_id === session.tenantId) {
+        list.push({ ...p });
+      }
+    }
+    return list;
+  }
+
+  updateOrganization(
+    session: SessionContext,
+    orgId: string,
+    updates: Record<string, unknown>
+  ): { id: string; name: string; type: string } {
+    if (orgId !== session.tenantId) {
+      throw new Error('404 Not Found or Access Denied: Cross-tenant organization modification prohibited');
+    }
+    if (session.role !== 'fleet_admin') {
+      throw new Error('403 Forbidden: Only fleet_admin can update organization settings');
+    }
+    const existing = this.organizations.get(orgId);
+    if (!existing) {
+      throw new Error('404 Not Found: Organization not found');
+    }
+    const updated = { ...existing, ...updates, id: orgId };
+    this.organizations.set(orgId, updated);
+    return updated;
+  }
+
+  updateProfile(
+    session: SessionContext,
+    profileId: string,
+    updates: Record<string, unknown>
+  ): { id: string; tenant_id: string; role: string; name: string } {
+    const existing = this.profiles.get(profileId);
+    if (!existing || existing.tenant_id !== session.tenantId) {
+      throw new Error('404 Not Found or Access Denied: Cross-tenant profile modification prohibited');
+    }
+    if (existing.id !== session.userId) {
+      throw new Error('403 Forbidden: Users can only modify their own profile');
+    }
+    const updated = { ...existing, ...updates, id: profileId, tenant_id: session.tenantId };
+    this.profiles.set(profileId, updated);
+    return updated;
+  }
+
   updateRow(
     session: SessionContext,
     tableName: string,
