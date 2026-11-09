@@ -28,7 +28,7 @@ export default function DriverHudPage() {
             <button
               key={l}
               onClick={() => setLang(l)}
-              className={`min-h-[44px] min-w-[44px] px-2 text-xs font-bold rounded uppercase border ${
+              className={`min-h-[56px] min-w-[56px] px-2 text-sm font-bold rounded uppercase border ${
                 lang === l ? 'bg-amber-500 text-black border-amber-500' : 'bg-neutral-800 text-neutral-300 border-neutral-700'
               }`}
             >

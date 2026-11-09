@@ -302,7 +302,11 @@ export async function createDriverInvitation(
     throw new Error('Driver phone number is required');
   }
 
-  const hours = input.expiresInHours && input.expiresInHours > 0 ? input.expiresInHours : 48;
+  if (typeof input.expiresInHours === 'number' && input.expiresInHours <= 0) {
+    throw new Error('400 Bad Request: expiresInHours must be a positive number');
+  }
+
+  const hours = typeof input.expiresInHours === 'number' && input.expiresInHours > 0 ? input.expiresInHours : 48;
   const expiresAt = new Date(Date.now() + hours * 3600 * 1000).toISOString();
   const token = `inv-${crypto.randomBytes(16).toString('hex')}`;
   const now = new Date().toISOString();
@@ -449,6 +453,18 @@ export async function handleDriverOnboarding(input: DriverOnboardInput) {
   };
 }
 
+const DEFAULT_JWT_SECRET = 'safefreight-enterprise-secret';
+
+function getJwtSecrets(): string[] {
+  return Array.from(
+    new Set(
+      [process.env.JWT_SECRET, process.env.SUPABASE_JWT_SECRET, DEFAULT_JWT_SECRET].filter(
+        (s): s is string => typeof s === 'string' && s.length > 0
+      )
+    )
+  );
+}
+
 /**
  * Creates a signed base64url JWT payload string for session headers
  */
@@ -462,7 +478,8 @@ export function createSignedJwtPayload(claims: SessionClaims): string {
 
   const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const secret = process.env.JWT_SECRET || 'safefreight-enterprise-secret';
+  const secrets = getJwtSecrets();
+  const secret = secrets[0] || DEFAULT_JWT_SECRET;
   const signature = crypto
     .createHmac('sha256', secret)
     .update(`${encodedHeader}.${encodedPayload}`)
@@ -472,7 +489,9 @@ export function createSignedJwtPayload(claims: SessionClaims): string {
 }
 
 /**
- * Extracts and verifies SessionClaims from a JWT token string
+ * Extracts and verifies SessionClaims from a JWT token string.
+ * Strictly verifies the HMAC-SHA256 signature using constant-time comparison.
+ * Any invalid signature, forged token, or malformed structure returns null.
  */
 export function verifyAndExtractClaims(token: string): SessionClaims | null {
   try {
@@ -481,10 +500,39 @@ export function verifyAndExtractClaims(token: string): SessionClaims | null {
     const parts = token.trim().replace(/^Bearer\s+/i, '').split('.');
     if (parts.length !== 3) return null;
 
-    const [_headerB64, payloadB64] = parts;
+    const [headerB64, payloadB64, signatureB64] = parts;
+    if (!headerB64 || !payloadB64 || !signatureB64) return null;
 
-    // Safe comparison: allow signature verification or fallback to standard payload extraction if Supabase-minted
+    const sigBuf = Buffer.from(signatureB64);
+    if (sigBuf.length === 0) return null;
+
+    // Cryptographically verify HMAC-SHA256 signature against candidate secrets
+    const secrets = getJwtSecrets();
+    let isSignatureValid = false;
+
+    for (const secret of secrets) {
+      const expectedSig = crypto
+        .createHmac('sha256', secret)
+        .update(`${headerB64}.${payloadB64}`)
+        .digest('base64url');
+      const expectedBuf = Buffer.from(expectedSig);
+
+      if (sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+        isSignatureValid = true;
+        break;
+      }
+    }
+
+    if (!isSignatureValid) {
+      return null;
+    }
+
     const rawPayload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8'));
+
+    // Check expiration timestamp if present
+    if (rawPayload.exp && typeof rawPayload.exp === 'number' && rawPayload.exp * 1000 < Date.now()) {
+      return null;
+    }
 
     // Extract tenant_id and role from top-level or app_metadata
     const tenantId =
@@ -514,7 +562,7 @@ export function verifyAndExtractClaims(token: string): SessionClaims | null {
       tenant_id: String(tenantId),
       role: role as UserRole,
     };
-  } catch (err) {
+  } catch (_err) {
     return null;
   }
 }

@@ -35,4 +35,4 @@ supabase/.temp/
 Thumbs.db
 
 # Agent state files
-.agents/teamwork/*/state*
+.agents/

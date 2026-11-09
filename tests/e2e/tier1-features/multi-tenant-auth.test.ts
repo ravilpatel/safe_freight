@@ -329,14 +329,14 @@ describe('Tier 1: Feature Coverage — Multi-Tenant Architecture & Auth (FEAT-06
       },
     });
 
-    const response = middleware(driverReq);
+    const response = await middleware(driverReq);
     expect(response.status).toBe(307); // Temporary Redirect
     const location = response.headers.get('location');
     expect(location).toContain('/driver'); // Redirected to Driver HUD, denied /admin
 
     // 3. Unauthenticated request to /admin -> redirects to /login
     const unauthReq = new NextRequest('http://localhost:3000/admin/dashboard');
-    const unauthResponse = middleware(unauthReq);
+    const unauthResponse = await middleware(unauthReq);
     expect(unauthResponse.status).toBe(307);
     expect(unauthResponse.headers.get('location')).toContain('/login');
   });
@@ -440,5 +440,66 @@ describe('Tier 1: Feature Coverage — Multi-Tenant Architecture & Auth (FEAT-06
         fullName: 'Another Driver',
       })
     ).rejects.toThrow(/already redeemed/);
+  });
+
+  it('TC-MTA-12: Cryptographic JWT signature verification & forged token rejection', async () => {
+    // Authoritative Requirement: PRD v4.0.0 §0 Rule 2, §3.2, §10
+    const { verifyAndExtractClaims, createDriverInvitation } = await import('@/lib/auth');
+    const { middleware } = await import('@/middleware');
+    const { POST: postDrivers } = await import('@/app/api/v1/fleet/drivers/route');
+    const { NextRequest } = await import('next/server');
+
+    // Reviewer's exact forged token with forged signature and arbitrary claims
+    const forgedToken =
+      'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYiLCJyb2xlIjoiZmxlZXRfYWRtaW4iLCJ0ZW5hbnRfaWQiOiJoYWNrZWQtb3JnIn0.forged-sig-123';
+
+    // 1. Direct claim verification must reject forged signature
+    const claims = verifyAndExtractClaims(forgedToken);
+    expect(claims).toBeNull();
+
+    // 2. Protected API route must reject forged token with HTTP 401 Unauthorized
+    const apiReq = new NextRequest('http://localhost:3000/api/v1/fleet/drivers', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${forgedToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ phone: '+919999999999' }),
+    });
+
+    const apiRes = await postDrivers(apiReq);
+    expect(apiRes.status).toBe(401);
+    const apiBody = await apiRes.json();
+    expect(apiBody.error).toContain('401 Unauthorized');
+
+    // 3. Edge middleware must intercept forged token and redirect to /login
+    const edgeReq = new NextRequest('http://localhost:3000/admin/fleet', {
+      headers: {
+        authorization: `Bearer ${forgedToken}`,
+      },
+    });
+
+    const edgeRes = await middleware(edgeReq);
+    expect(edgeRes.status).toBe(307);
+    const redirectUrl = edgeRes.headers.get('location');
+    expect(redirectUrl).toBeDefined();
+    expect(redirectUrl).toContain('/login');
+    expect(redirectUrl).toContain('redirect=%2Fadmin%2Ffleet');
+
+    // 4. Invitation expiration must reject non-positive expiresInHours (<= 0)
+    const validClaims = {
+      sub: 'usr-admin-test',
+      email: 'admin@safefreight.in',
+      tenant_id: 'org-test-valid',
+      role: 'fleet_admin' as const,
+    };
+
+    await expect(
+      createDriverInvitation(validClaims, { phone: '+919876543210', expiresInHours: 0 })
+    ).rejects.toThrow(/expiresInHours must be a positive number/);
+
+    await expect(
+      createDriverInvitation(validClaims, { phone: '+919876543210', expiresInHours: -10 })
+    ).rejects.toThrow(/expiresInHours must be a positive number/);
   });
 });
