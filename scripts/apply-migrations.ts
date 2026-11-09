@@ -25,6 +25,7 @@ const AUDITED_TABLES = [
   'pings',
   'safety_incidents',
   'security_alerts',
+  'audit_log',
   'users',
 ];
 

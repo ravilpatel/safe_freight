@@ -1,7 +1,29 @@
 /**
  * SafeFreight OS — Multi-Tenant Context & Session Isolation Simulator
  * Strictly adheres to PRD v4.0.0 §4, §8, §10
+ * Linked directly to production algorithmic engines in src/lib/algorithms/
  */
+
+import {
+  calculateDeadMileageSavings,
+  calculate3WayRoutes,
+  calculateShipperQuote,
+  calculateAcceptanceProbability,
+  calculateBidProbability,
+  calculateTripKhata,
+  classifyAIS140GForce,
+  generateStatutoryLRNumber,
+  validateEWayBillNumber,
+  validateGSTIN,
+  DeadMileageOptions,
+  DeadMileageSavingsResult,
+  RouteOption,
+  ShipperQuoteResult,
+  AcceptanceProbabilityResult,
+  TripKhataAdvances,
+  TripKhataResult,
+  AIS140ClassificationResult,
+} from '../../../src/lib/algorithms';
 
 export interface SessionContext {
   userId: string;
@@ -45,6 +67,7 @@ export class MultiTenantDatabaseSimulator {
     this.businessTables.set('pings', new Map());
     this.businessTables.set('safety_incidents', new Map());
     this.businessTables.set('security_alerts', new Map());
+    this.businessTables.set('audit_log', new Map());
   }
 
   // --- Auth & Onboarding Flows ---
@@ -321,4 +344,71 @@ export class MultiTenantDatabaseSimulator {
     const table = this.businessTables.get(tableName);
     return table ? table.size : 0;
   }
+
+  // --- Algorithmic Engine Linkages ---
+
+  computeDeadMileageSavings(
+    totalKm: number,
+    loadedKm: number,
+    options?: DeadMileageOptions
+  ): DeadMileageSavingsResult {
+    return calculateDeadMileageSavings(totalKm, loadedKm, options);
+  }
+
+  compute3WayRoutes(
+    origin: string,
+    destination: string,
+    isInterstate?: boolean,
+    distanceOverrideKm?: number
+  ): RouteOption[] {
+    return calculate3WayRoutes(origin, destination, isInterstate, distanceOverrideKm);
+  }
+
+  computeShipperQuote(
+    type: string,
+    distanceKm: number,
+    weightKg: number,
+    volumeCbm?: number
+  ): ShipperQuoteResult {
+    return calculateShipperQuote(type, distanceKm, weightKg, volumeCbm);
+  }
+
+  computeAcceptanceProbability(
+    userBidAdditionINR: number,
+    minPricingINR: number
+  ): AcceptanceProbabilityResult {
+    return calculateAcceptanceProbability(userBidAdditionINR, minPricingINR);
+  }
+
+  computeBidProbability(
+    totalBidINR: number,
+    minPricingINR: number
+  ): AcceptanceProbabilityResult {
+    return calculateBidProbability(totalBidINR, minPricingINR);
+  }
+
+  computeTripKhata(
+    grossFreight: number,
+    advances: TripKhataAdvances,
+    maintenanceReserve?: number
+  ): TripKhataResult {
+    return calculateTripKhata(grossFreight, advances, maintenanceReserve);
+  }
+
+  classifyAIS140GForce(ax: number, ay: number, az: number): AIS140ClassificationResult {
+    return classifyAIS140GForce(ax, ay, az);
+  }
 }
+
+export {
+  calculateDeadMileageSavings,
+  calculate3WayRoutes,
+  calculateShipperQuote,
+  calculateAcceptanceProbability,
+  calculateBidProbability,
+  calculateTripKhata,
+  classifyAIS140GForce,
+  generateStatutoryLRNumber,
+  validateEWayBillNumber,
+  validateGSTIN,
+};

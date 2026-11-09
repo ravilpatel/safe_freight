@@ -468,12 +468,16 @@ function getJwtSecrets(): string[] {
 /**
  * Creates a signed base64url JWT payload string for session headers
  */
-export function createSignedJwtPayload(claims: SessionClaims): string {
+export function createSignedJwtPayload(
+  claims: SessionClaims,
+  expiresInSeconds: number = 86400
+): string {
   const header = { alg: 'HS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
   const payload = {
     ...claims,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600 * 24, // 24 hours
+    iat: now,
+    exp: now + expiresInSeconds,
   };
 
   const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -486,6 +490,30 @@ export function createSignedJwtPayload(claims: SessionClaims): string {
     .digest('base64url');
 
   return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+/**
+ * Extracts and verifies SessionClaims from a request via Authorization Bearer header or cookies.
+ */
+export function extractClaimsFromRequest(request: {
+  headers: { get(_name: string): string | null };
+  cookies?: { get(_name: string): { value: string } | undefined };
+}): SessionClaims | null {
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const claims = verifyAndExtractClaims(authHeader);
+    if (claims) return claims;
+  }
+
+  const cookieToken =
+    request.cookies?.get('sb-access-token')?.value ||
+    request.cookies?.get('safefreight-token')?.value;
+
+  if (cookieToken) {
+    return verifyAndExtractClaims(cookieToken);
+  }
+
+  return null;
 }
 
 /**
