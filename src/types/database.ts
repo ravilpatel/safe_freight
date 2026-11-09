@@ -45,7 +45,9 @@ export interface SessionClaims {
 export type LoadStatus =
   | 'draft'
   | 'posted'
+  | 'open'
   | 'matched'
+  | 'assigned'
   | 'in_transit'
   | 'delivered'
   | 'cancelled';
@@ -66,6 +68,22 @@ export interface Load {
   status: LoadStatus;
   pricing_inr: number;
   matched_driver_id?: string | null;
+  cargo_category?: string | null;
+  truck_type?: string | null;
+  consignor_name?: string | null;
+  consignor_gstin?: string | null;
+  consignee_name?: string | null;
+  consignee_gstin?: string | null;
+  eway_bill_number?: string | null;
+  hamali_included?: boolean | null;
+  insurance_included?: boolean | null;
+  scheduled_date?: string | null;
+  scheduled_slot?: string | null;
+  bid_bonus_inr?: number | null;
+  acceptance_probability?: number | null;
+  dispatch_speed_band?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;
@@ -78,6 +96,8 @@ export type MilestoneStatus =
   | 'at_pickup'
   | 'loaded'
   | 'in_transit'
+  | 'halt'
+  | 'dhaba_break'
   | 'at_unloading'
   | 'completed'
   | 'cancelled';
@@ -95,6 +115,7 @@ export interface Trip {
   maintenance_reserve: number;
   balance_due: number;
   net_profit: number;
+  scheduled_date?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;
@@ -121,6 +142,52 @@ export interface FleetDocument {
   expiry_date?: string | null;
   verification_status: VerificationStatus;
   document_url?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FreightTerms = 'PAID' | 'TO_PAY' | 'TBB';
+export type ConsignmentStatus = 'ISSUED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
+
+export interface EBiltiConsignment {
+  id: string;
+  tenant_id: string;
+  lr_number: string;
+  eway_bill_number?: string | null;
+  load_id?: string | null;
+  trip_id?: string | null;
+  vehicle_plate: string;
+  driver_id?: string | null;
+  driver_name?: string | null;
+  driver_dl?: string | null;
+  consignor_name: string;
+  consignor_address: string;
+  consignor_gstin?: string | null;
+  consignee_name: string;
+  consignee_address: string;
+  consignee_gstin?: string | null;
+  origin: string;
+  destination: string;
+  cargo_description: string;
+  packages_count: number;
+  gross_weight_kg: number;
+  tare_weight_kg?: number | null;
+  net_weight_kg: number;
+  freight_amount_inr: number;
+  freight_terms: FreightTerms;
+  tax_payer_role: 'CONSIGNOR' | 'CONSIGNEE' | 'GTA';
+  is_reverse_charge: boolean;
+  gst_rate_pct: number;
+  gst_amount_inr: number;
+  declared_cargo_value_inr?: number | null;
+  insurance_policy_number?: string | null;
+  carrier_liability_accepted: boolean;
+  verification_hash: string;
+  verification_token: string;
+  verification_url: string;
+  status: ConsignmentStatus;
   created_by?: string | null;
   updated_by?: string | null;
   created_at: string;

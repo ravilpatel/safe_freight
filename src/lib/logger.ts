@@ -11,10 +11,12 @@ export interface LogPayload {
   context: string;
   message: string;
   request_id?: string;
+  correlation_id?: string;
   tenant_id?: string | null;
   actor_id?: string | null;
   path?: string;
   duration_ms?: number;
+  status_code?: number;
   error?: string | { message: string; stack?: string };
   [key: string]: unknown;
 }
@@ -24,15 +26,30 @@ export interface LoggerOptions {
   defaultMeta?: Record<string, unknown>;
 }
 
+const SENSITIVE_KEY_PATTERN = /^(password|token|secret|authorization|service_role_key|supabase_service_role_key|jwt|cookie|api_key|access_token|refresh_token|private_key)$/i;
+
 /**
  * Custom JSON replacer for structured logging:
  * - Replaces circular references with "[Circular]"
+ * - Automatically scrubs passwords, secrets, authorization headers, and tokens
  * - Serializes BigInt values as strings
  * - Serializes Error objects extracting name, message, and stack
  */
 export function createSafeJsonReplacer() {
   const seen = new WeakSet();
   return function replacer(this: unknown, key: string, value: unknown): unknown {
+    // 1. Scrub sensitive credentials by key name
+    if (typeof key === 'string' && SENSITIVE_KEY_PATTERN.test(key)) {
+      return '[REDACTED]';
+    }
+
+    // 2. Scrub sensitive token strings by pattern
+    if (typeof value === 'string') {
+      if (value.startsWith('Bearer eyJ') || value.startsWith('eyJhbGciOi')) {
+        return '[REDACTED_TOKEN]';
+      }
+    }
+
     if (typeof value === 'bigint') {
       return value.toString();
     }

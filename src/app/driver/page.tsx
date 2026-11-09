@@ -1,81 +1,233 @@
 'use client';
 
 import React, { useState } from 'react';
+import { DriverLanguage, DRIVER_TRANSLATIONS } from '@/components/driver/types';
+import { GpsHud } from '@/components/driver/GpsHud';
+import { MilestoneTracker } from '@/components/driver/MilestoneTracker';
+import { TripKhataDiary } from '@/components/driver/TripKhataDiary';
+import { RouteSelector } from '@/components/driver/RouteSelector';
+import { BackhaulBoard } from '@/components/driver/BackhaulBoard';
+import { EmergencyBar } from '@/components/driver/EmergencyBar';
+import { EBiltiModal } from '@/components/driver/EBiltiModal';
+import { audioSynth } from '@/components/driver/audio';
+import {
+  Navigation,
+  Wallet,
+  Compass,
+  Package,
+  LogOut,
+  Infinity,
+  ShieldCheck,
+} from 'lucide-react';
 
-export default function DriverHudPage() {
-  const [sosActive, setSosActive] = useState(false);
-  const [lang, setLang] = useState<'en' | 'hi' | 'mr' | 'gu' | 'ta'>('en');
+export default function DriverConsolePage() {
+  const [lang, setLang] = useState<DriverLanguage>('hi');
+  const [activeTab, setActiveTab] = useState<'hud' | 'khata' | 'route' | 'backhaul'>('hud');
+  const [isEBiltiOpen, setIsEBiltiOpen] = useState<boolean>(false);
 
-  const translations = {
-    en: { title: 'Driver Highway HUD', sos: 'SOS', activeTrip: 'Active Trip: Mumbai -> Surat', status: 'On Highway NH 48' },
-    hi: { title: 'चालक हाईवे HUD', sos: 'आपातकालीन', activeTrip: 'सक्रिय यात्रा: मुंबई -> सूरत', status: 'राष्ट्रीय राजमार्ग NH 48' },
-    mr: { title: 'चालक महामार्ग HUD', sos: 'आपत्कालीन', activeTrip: 'सक्रिय ट्रिप: मुंबई -> सुरत', status: 'महामार्ग NH 48' },
-    gu: { title: 'ડ્રાઈવર હાઇવે HUD', sos: 'કટોકટી', activeTrip: 'સક્રિય સફર: મુંબઈ -> સુરત', status: 'હાઇવે NH 48' },
-    ta: { title: 'ஓட்டுநர் நெடுஞ்சாலை HUD', sos: 'அவசரம்', activeTrip: 'செயலில் உள்ள பயணம்: மும்பை -> சூரத்', status: 'நெடுஞ்சாலை NH 48' },
+  const t = DRIVER_TRANSLATIONS[lang] || DRIVER_TRANSLATIONS.en;
+
+  const handleLanguageChange = (newLang: DriverLanguage) => {
+    audioSynth.playClickTone();
+    setLang(newLang);
   };
 
-  const t = translations[lang] || translations.en;
+  const handleSignOut = () => {
+    audioSynth.playClickTone();
+    if (typeof document !== 'undefined') {
+      document.cookie = 'safefreight-token=; path=/; max-age=0';
+      window.location.href = '/login';
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6 flex flex-col justify-between select-none">
-      <header className="flex justify-between items-center border-b border-neutral-800 pb-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-white">{t.title}</h1>
-          <p className="text-sm text-emerald-400 font-semibold">{t.status}</p>
-        </div>
-        <div className="flex gap-2">
-          {(['en', 'hi', 'mr', 'gu', 'ta'] as const).map((l) => (
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col justify-between select-none">
+      {/* Operating Command Header */}
+      <header className="sticky top-0 z-40 bg-neutral-950/95 backdrop-blur-md border-b border-neutral-800 px-3 py-2 sm:px-4 sm:py-3 shadow-lg">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          {/* Brand & Fleet Info */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#0075de] to-sky-400 flex items-center justify-center text-white shadow-md">
+              <Infinity className="w-8 h-8 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  SafeFreight OS
+                </h1>
+                <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded text-xs font-black bg-emerald-950 text-emerald-400 border border-emerald-700">
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                  M1 Commercial
+                </span>
+              </div>
+              <p className="text-base text-neutral-300 font-medium">
+                {t.subtitle}
+              </p>
+            </div>
+          </div>
+
+          {/* Controls: 5-Language Switcher (>= 56dp Touch Target) & Sign Out */}
+          <div className="flex items-center gap-2">
+            {/* 5-Language Switcher */}
+            <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-2xl p-1 gap-1">
+              {(
+                [
+                  { code: 'hi', label: 'हिन्दी' },
+                  { code: 'gu', label: 'ગુજરાતી' },
+                  { code: 'mr', label: 'मराठी' },
+                  { code: 'te', label: 'తెలుగు' },
+                  { code: 'en', label: 'EN' },
+                ] as const
+              ).map(({ code, label }) => {
+                const isActive = lang === code;
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => handleLanguageChange(code)}
+                    className={`min-h-[56px] min-w-[56px] px-3.5 rounded-xl font-black text-base transition-all flex items-center justify-center ${
+                      isActive
+                        ? 'bg-[#0075de] text-white shadow-md'
+                        : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sign Out Button (>= 56dp Touch Target) */}
             <button
-              key={l}
-              onClick={() => setLang(l)}
-              className={`min-h-[56px] min-w-[56px] px-2 text-sm font-bold rounded uppercase border ${
-                lang === l ? 'bg-amber-500 text-black border-amber-500' : 'bg-neutral-800 text-neutral-300 border-neutral-700'
+              type="button"
+              onClick={handleSignOut}
+              className="min-h-[56px] min-w-[56px] p-3 rounded-2xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-neutral-800 transition-colors flex items-center justify-center"
+              title="Sign Out"
+            >
+              <LogOut className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* 4 Console Main Navigation Tabs (>= 56dp Touch Target) */}
+        <div className="max-w-7xl mx-auto mt-2 border-t border-neutral-800/80 pt-2">
+          <nav className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                audioSynth.playClickTone();
+                setActiveTab('hud');
+              }}
+              className={`min-h-[56px] px-3.5 py-2.5 rounded-xl font-black text-base sm:text-lg flex items-center justify-center gap-2 border-2 transition-all ${
+                activeTab === 'hud'
+                  ? 'bg-[#0075de] border-[#0075de] text-white shadow-lg'
+                  : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
               }`}
             >
-              {l}
+              <Navigation className="w-5 h-5 shrink-0" />
+              <span className="truncate">{t.tabHud}</span>
             </button>
-          ))}
+
+            <button
+              type="button"
+              onClick={() => {
+                audioSynth.playClickTone();
+                setActiveTab('khata');
+              }}
+              className={`min-h-[56px] px-3.5 py-2.5 rounded-xl font-black text-base sm:text-lg flex items-center justify-center gap-2 border-2 transition-all ${
+                activeTab === 'khata'
+                  ? 'bg-[#0075de] border-[#0075de] text-white shadow-lg'
+                  : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
+              }`}
+            >
+              <Wallet className="w-5 h-5 shrink-0" />
+              <span className="truncate">{t.tabKhata}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                audioSynth.playClickTone();
+                setActiveTab('route');
+              }}
+              className={`min-h-[56px] px-3.5 py-2.5 rounded-xl font-black text-base sm:text-lg flex items-center justify-center gap-2 border-2 transition-all ${
+                activeTab === 'route'
+                  ? 'bg-[#0075de] border-[#0075de] text-white shadow-lg'
+                  : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
+              }`}
+            >
+              <Compass className="w-5 h-5 shrink-0" />
+              <span className="truncate">{t.tabRoute}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                audioSynth.playClickTone();
+                setActiveTab('backhaul');
+              }}
+              className={`min-h-[56px] px-3.5 py-2.5 rounded-xl font-black text-base sm:text-lg flex items-center justify-center gap-2 border-2 transition-all ${
+                activeTab === 'backhaul'
+                  ? 'bg-[#0075de] border-[#0075de] text-white shadow-lg'
+                  : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white'
+              }`}
+            >
+              <Package className="w-5 h-5 shrink-0" />
+              <span className="truncate">{t.tabBackhaul}</span>
+            </button>
+          </nav>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center my-8 space-y-8">
-        <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-neutral-400 mb-2 font-semibold">AIS-140 Live Link</p>
-          <h2 className="text-xl font-bold text-white mb-2">{t.activeTrip}</h2>
-          <p className="text-sm text-neutral-300">Vehicle: GJ-05-BZ-8821 · Speed: 62 km/h</p>
-        </div>
+      {/* Main Console Work Area */}
+      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-6 pb-40">
+        {activeTab === 'hud' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* 24/7 Always-On GPS HUD */}
+            <GpsHud language={lang} />
+            {/* 1-Tap 6-Stage Milestone Tracker */}
+            <MilestoneTracker language={lang} />
+          </div>
+        )}
 
-        {/* SOS Emergency Touch Target: 96dp centered button */}
-        <div className="flex flex-col items-center">
-          <button
-            onClick={() => setSosActive(!sosActive)}
-            className={`w-24 h-24 rounded-full flex items-center justify-center text-xl font-black shadow-lg transition-transform active:scale-95 border-4 ${
-              sosActive
-                ? 'bg-red-600 text-white border-red-300 animate-pulse'
-                : 'bg-red-700 text-white border-red-500 hover:bg-red-600'
-            }`}
-            style={{ width: '96px', height: '96px' }}
-          >
-            {t.sos}
-          </button>
-          <span className="text-xs text-neutral-400 mt-2 font-medium">
-            {sosActive ? '🚨 Golden Hour Protocol Activated' : 'Emergency SOS (96dp)'}
-          </span>
-        </div>
+        {activeTab === 'khata' && (
+          <div className="animate-in fade-in duration-200">
+            {/* Trip Khata Cash Expense Diary */}
+            <TripKhataDiary language={lang} />
+          </div>
+        )}
+
+        {activeTab === 'route' && (
+          <div className="animate-in fade-in duration-200">
+            {/* 3-Way Route Selector with Checkpoints & Voice Guidance */}
+            <RouteSelector language={lang} />
+          </div>
+        )}
+
+        {activeTab === 'backhaul' && (
+          <div className="animate-in fade-in duration-200">
+            {/* Return Backhaul Load Matching & Acceptance */}
+            <BackhaulBoard language={lang} />
+          </div>
+        )}
       </main>
 
-      <footer className="border-t border-neutral-800 pt-4 flex justify-between items-center">
-        <span className="text-xs text-neutral-500">SafeFreight OS v4.0.0</span>
-        <button
-          onClick={() => {
-            document.cookie = 'safefreight-token=; path=/; max-age=0';
-            window.location.href = '/login';
-          }}
-          className="min-h-[56px] px-6 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl font-medium text-sm flex items-center justify-center"
-        >
-          Sign Out
-        </button>
+      {/* Persistent Bottom Emergency & Highway Contacts Bar */}
+      <footer className="sticky bottom-0 z-40 bg-neutral-950/95 backdrop-blur-md border-t border-neutral-800 p-2 sm:p-3">
+        <div className="max-w-7xl mx-auto">
+          <EmergencyBar
+            language={lang}
+            onOpenEBilti={() => setIsEBiltiOpen(true)}
+          />
+        </div>
       </footer>
+
+      {/* Statutory e-Bilti & RTO Inspection View Modal */}
+      <EBiltiModal
+        isOpen={isEBiltiOpen}
+        onClose={() => setIsEBiltiOpen(false)}
+        language={lang}
+      />
     </div>
   );
 }

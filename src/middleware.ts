@@ -155,13 +155,28 @@ export async function extractClaimsFromRequest(request: NextRequest): Promise<{
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const correlationId =
+    request.headers.get('x-correlation-id') ||
+    request.headers.get('x-request-id') ||
+    crypto.randomUUID();
 
   const isProtectedAdmin = pathname.startsWith('/admin');
   const isProtectedShipper = pathname.startsWith('/shipper');
   const isProtectedDriver = pathname.startsWith('/driver');
 
   if (!isProtectedAdmin && !isProtectedShipper && !isProtectedDriver) {
-    return NextResponse.next();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-correlation-id', correlationId);
+    requestHeaders.set('x-request-id', correlationId);
+
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+    response.headers.set('x-correlation-id', correlationId);
+    response.headers.set('x-request-id', correlationId);
+    return response;
   }
 
   const claims = await extractClaimsFromRequest(request);
@@ -170,46 +185,59 @@ export async function middleware(request: NextRequest) {
   if (!claims) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirectRes = NextResponse.redirect(loginUrl);
+    redirectRes.headers.set('x-correlation-id', correlationId);
+    redirectRes.headers.set('x-request-id', correlationId);
+    return redirectRes;
   }
 
   // Admin route requires role === 'fleet_admin'
   if (isProtectedAdmin && claims.role !== 'fleet_admin') {
+    let redirectRes: NextResponse;
     if (claims.role === 'shipper') {
-      return NextResponse.redirect(new URL('/shipper', request.url));
+      redirectRes = NextResponse.redirect(new URL('/shipper', request.url));
+    } else if (claims.role === 'driver') {
+      redirectRes = NextResponse.redirect(new URL('/driver', request.url));
+    } else {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('error', 'unauthorized_role');
+      redirectRes = NextResponse.redirect(loginUrl);
     }
-    if (claims.role === 'driver') {
-      return NextResponse.redirect(new URL('/driver', request.url));
-    }
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('error', 'unauthorized_role');
-    return NextResponse.redirect(loginUrl);
+    redirectRes.headers.set('x-correlation-id', correlationId);
+    redirectRes.headers.set('x-request-id', correlationId);
+    return redirectRes;
   }
 
-  // Shipper route requires role === 'shipper'
-  if (isProtectedShipper && claims.role !== 'shipper') {
-    if (claims.role === 'fleet_admin') {
-      return NextResponse.redirect(new URL('/admin', request.url));
-    }
+  // Shipper route requires role === 'shipper' (or 'fleet_admin')
+  if (isProtectedShipper && claims.role !== 'shipper' && claims.role !== 'fleet_admin') {
+    let redirectRes: NextResponse;
     if (claims.role === 'driver') {
-      return NextResponse.redirect(new URL('/driver', request.url));
+      redirectRes = NextResponse.redirect(new URL('/driver', request.url));
+    } else {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('error', 'unauthorized_role');
+      redirectRes = NextResponse.redirect(loginUrl);
     }
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('error', 'unauthorized_role');
-    return NextResponse.redirect(loginUrl);
+    redirectRes.headers.set('x-correlation-id', correlationId);
+    redirectRes.headers.set('x-request-id', correlationId);
+    return redirectRes;
   }
 
   // Driver route requires role === 'driver'
   if (isProtectedDriver && claims.role !== 'driver') {
+    let redirectRes: NextResponse;
     if (claims.role === 'fleet_admin') {
-      return NextResponse.redirect(new URL('/admin', request.url));
+      redirectRes = NextResponse.redirect(new URL('/admin', request.url));
+    } else if (claims.role === 'shipper') {
+      redirectRes = NextResponse.redirect(new URL('/shipper', request.url));
+    } else {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('error', 'unauthorized_role');
+      redirectRes = NextResponse.redirect(loginUrl);
     }
-    if (claims.role === 'shipper') {
-      return NextResponse.redirect(new URL('/shipper', request.url));
-    }
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('error', 'unauthorized_role');
-    return NextResponse.redirect(loginUrl);
+    redirectRes.headers.set('x-correlation-id', correlationId);
+    redirectRes.headers.set('x-request-id', correlationId);
+    return redirectRes;
   }
 
   // Authorized: pass forward with tenant and role context headers
@@ -217,12 +245,18 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-tenant-id', claims.tenantId);
   requestHeaders.set('x-user-role', claims.role);
   requestHeaders.set('x-user-id', claims.sub);
+  requestHeaders.set('x-correlation-id', correlationId);
+  requestHeaders.set('x-request-id', correlationId);
 
-  return NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: requestHeaders,
     },
   });
+  response.headers.set('x-correlation-id', correlationId);
+  response.headers.set('x-request-id', correlationId);
+
+  return response;
 }
 
 export const config = {
@@ -230,5 +264,6 @@ export const config = {
     '/admin/:path*',
     '/shipper/:path*',
     '/driver/:path*',
+    '/api/:path*',
   ],
 };

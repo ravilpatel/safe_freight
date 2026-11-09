@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { tenantStore } from '@/lib/auth';
 import { MultiTenantDatabaseSimulator, SessionContext } from '../harness/mock-context';
 
 describe('Tier 1: Feature Coverage — Multi-Tenant Architecture & Auth (FEAT-06)', () => {
+  beforeEach(() => {
+    tenantStore.clear();
+  });
   it('TC-MTA-01: Fleet Admin signup creates exactly 1 organization, 1 profile, and 0 business rows', () => {
     // Authoritative Requirement: PRD v4.0.0 §0 Rule 1, §3.2, §5 Phase 1
     const db = new MultiTenantDatabaseSimulator();
@@ -388,11 +392,13 @@ describe('Tier 1: Feature Coverage — Multi-Tenant Architecture & Auth (FEAT-06
       '@/lib/auth'
     );
 
+    const uniqueId = `mta-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
     // 1. Fleet Admin self-onboarding
     const adminResult = await handleSignup({
-      email: 'admin.lifecycle@wifl.in',
+      email: `admin.${uniqueId}@wifl.in`,
       fullName: 'Balwinder Singh',
-      orgName: 'WIFL Super Logistics',
+      orgName: `WIFL Super Logistics ${uniqueId}`,
       orgType: 'carrier',
       role: 'fleet_admin',
     });
@@ -422,7 +428,7 @@ describe('Tier 1: Feature Coverage — Multi-Tenant Architecture & Auth (FEAT-06
     // 3. Driver onboards with invitation token
     const driverResult = await handleDriverOnboarding({
       invitationToken: invite.token,
-      email: 'driver.lifecycle@wifl.in',
+      email: `driver.${uniqueId}@wifl.in`,
       fullName: 'Suresh Kumar',
       phone: '+919876543210',
     });
@@ -436,7 +442,7 @@ describe('Tier 1: Feature Coverage — Multi-Tenant Architecture & Auth (FEAT-06
     await expect(
       handleDriverOnboarding({
         invitationToken: invite.token,
-        email: 'another.driver@wifl.in',
+        email: `another.${uniqueId}@wifl.in`,
         fullName: 'Another Driver',
       })
     ).rejects.toThrow(/already redeemed/);

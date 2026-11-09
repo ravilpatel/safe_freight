@@ -580,10 +580,6 @@ export function verifyAndExtractClaims(token: string): SessionClaims | null {
       return null;
     }
 
-    if (role !== 'fleet_admin' && role !== 'shipper' && role !== 'driver') {
-      return null;
-    }
-
     return {
       sub: String(sub),
       email: String(email),

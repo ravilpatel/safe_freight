@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST as loadsPOST, GET as loadsGET } from '@/app/api/v1/loads/route';
+import { PATCH as loadCancelPATCH, POST as loadCancelPOST } from '@/app/api/v1/loads/[id]/cancel/route';
 import { POST as tripsPOST, GET as tripsGET } from '@/app/api/v1/trips/route';
 import { POST as quotesPOST } from '@/app/api/v1/quotes/route';
+import { POST as invoicePOST, GET as invoiceGET } from '@/app/api/v1/quotes/invoice/route';
 import { POST as khataPOST, GET as khataGET } from '@/app/api/v1/khata/route';
 import { createSignedJwtPayload } from '@/lib/auth';
 import { dataService } from '@/lib/data-service';
@@ -24,8 +26,24 @@ describe('Unit Test: Versioned REST API Surface & Idempotency (/api/v1/)', () =>
     role: 'fleet_admin',
   };
 
+  const tenantAShipper: SessionClaims = {
+    sub: 'user-shipper-1',
+    email: 'shipper1@tenant-a.com',
+    tenant_id: 'tenant-a-org-uuid',
+    role: 'shipper',
+  };
+
+  const tenantADriver: SessionClaims = {
+    sub: 'user-driver-1',
+    email: 'driver1@tenant-a.com',
+    tenant_id: 'tenant-a-org-uuid',
+    role: 'driver',
+  };
+
   const tokenA = createSignedJwtPayload(tenantA);
   const tokenB = createSignedJwtPayload(tenantB);
+  const tokenAShipper = createSignedJwtPayload(tenantAShipper);
+  const tokenADriver = createSignedJwtPayload(tenantADriver);
 
   beforeEach(() => {
     dataService.clear();
@@ -345,6 +363,215 @@ describe('Unit Test: Versioned REST API Surface & Idempotency (/api/v1/)', () =>
 
       const res = await khataPOST(req);
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ==========================================
+  // 5. LOAD CANCELLATION ENDPOINT (/api/v1/loads/[id]/cancel)
+  // ==========================================
+  describe('/api/v1/loads/[id]/cancel', () => {
+    it('returns 401 when unauthenticated', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/loads/load-123/cancel', {
+        method: 'PATCH',
+      });
+      const res = await loadCancelPATCH(req, { params: { id: 'load-123' } });
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 403 when user has driver role', async () => {
+      const load = await dataService.createLoad(tenantA, {
+        origin_name: 'Mumbai JNPT',
+        destination_name: 'Pune Chakan',
+        weight_kg: 9000,
+      });
+
+      const req = new NextRequest(`http://localhost:3000/api/v1/loads/${load.id}/cancel`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${tokenADriver}` },
+      });
+      const res = await loadCancelPATCH(req, { params: { id: load.id } });
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 for cross-tenant load cancellation', async () => {
+      const loadA = await dataService.createLoad(tenantA, {
+        origin_name: 'Surat Ring Road',
+        destination_name: 'Vadodara Ranoli',
+        weight_kg: 8000,
+      });
+
+      const req = new NextRequest(`http://localhost:3000/api/v1/loads/${loadA.id}/cancel`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${tokenB}` },
+      });
+      const res = await loadCancelPATCH(req, { params: { id: loadA.id } });
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 400 when load is already in_transit', async () => {
+      const load = await dataService.createLoad(tenantA, {
+        origin_name: 'Vapi GIDC',
+        destination_name: 'Bhiwandi Warehousing',
+        weight_kg: 12000,
+        status: 'in_transit',
+      });
+
+      const req = new NextRequest(`http://localhost:3000/api/v1/loads/${load.id}/cancel`, {
+        method: 'PATCH',
+        headers: { authorization: `Bearer ${tokenAShipper}` },
+      });
+      const res = await loadCancelPATCH(req, { params: { id: load.id } });
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toMatch(/in transit/i);
+    });
+
+    it('returns 200 on success and idempotently on duplicate cancellation', async () => {
+      const load = await dataService.createLoad(tenantA, {
+        origin_name: 'JNPT Port',
+        destination_name: 'Changodar Hub',
+        weight_kg: 14000,
+      });
+
+      const req = new NextRequest(`http://localhost:3000/api/v1/loads/${load.id}/cancel`, {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bearer ${tokenAShipper}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ reason: 'Warehouse schedule changed' }),
+      });
+      const res = await loadCancelPATCH(req, { params: { id: load.id } });
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.load.status).toBe('cancelled');
+
+      // Re-cancelling returns 200 idempotently
+      const repeatReq = new NextRequest(`http://localhost:3000/api/v1/loads/${load.id}/cancel`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${tokenAShipper}` },
+      });
+      const repeatRes = await loadCancelPOST(repeatReq, { params: { id: load.id } });
+      expect(repeatRes.status).toBe(200);
+      const repeatJson = await repeatRes.json();
+      expect(repeatJson.message).toMatch(/already cancelled/i);
+    });
+  });
+
+  // ==========================================
+  // 6. GST TAX INVOICE ENDPOINT (/api/v1/quotes/invoice)
+  // ==========================================
+  describe('/api/v1/quotes/invoice', () => {
+    it('returns 401 when unauthenticated', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/quotes/invoice', {
+        method: 'POST',
+      });
+      const res = await invoicePOST(req);
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 403 when driver role attempts to generate tax invoice', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/quotes/invoice', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${tokenADriver}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          pricingInr: 45000,
+          distanceKm: 525,
+        }),
+      });
+      const res = await invoicePOST(req);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 404 for cross-tenant load_id reference', async () => {
+      const loadB = await dataService.createLoad(tenantB, {
+        origin_name: 'Delhi Transport Nagar',
+        destination_name: 'Jaipur VKIA',
+        weight_kg: 10000,
+      });
+
+      const req = new NextRequest('http://localhost:3000/api/v1/quotes/invoice', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${tokenAShipper}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ load_id: loadB.id }),
+      });
+      const res = await invoicePOST(req);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 400 when invalid GSTIN format is supplied', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/quotes/invoice', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${tokenAShipper}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          consignorGstin: 'INVALID-GSTIN-FORMAT',
+          pricingInr: 45000,
+        }),
+      });
+      const res = await invoicePOST(req);
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toMatch(/Invalid consignor GSTIN format/i);
+    });
+
+    it('returns 201 with SAC 9965 invoice and appends to audit log', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/quotes/invoice', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${tokenAShipper}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          origin: 'Mumbai JNPT Port, Maharashtra',
+          destination: 'Ahmedabad Changodar Hub, Gujarat',
+          distanceKm: 525,
+          weightKg: 14000,
+          pricingInr: 52000,
+          consignorName: 'Adani Logistics Hub',
+          consignorGstin: '27AAACW1234F1Z1',
+          consigneeName: 'Gujarat Industrial Corp',
+          consigneeGstin: '24AAACW5678G1Z2',
+          ewayBillNumber: '241098234512',
+          vehicleNumber: 'GJ-01-XX-9821',
+        }),
+      });
+
+      const res = await invoicePOST(req);
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.invoice.sacCode).toBe('9965');
+      expect(json.invoice.invoiceNumber).toMatch(/^SF-INV\/2026-27\/\d{5}$/);
+      expect(json.invoice.isInterState).toBe(true);
+      expect(json.invoice.igstRatePct).toBe(5);
+
+      // Verify audit trail
+      const audit = dataService.getAuditTrail(tenantAShipper, 'invoices');
+      expect(audit).toHaveLength(1);
+      expect(audit[0].action).toBe('INSERT');
+      expect(audit[0].record_id).toBe(json.invoice.invoiceNumber);
+
+      // Verify GET retrieval by invoice number
+      const getReq = new NextRequest(
+        `http://localhost:3000/api/v1/quotes/invoice?invoice_number=${json.invoice.invoiceNumber}`,
+        {
+          headers: { authorization: `Bearer ${tokenAShipper}` },
+        }
+      );
+      const getRes = await invoiceGET(getReq);
+      expect(getRes.status).toBe(200);
+      const getJson = await getRes.json();
+      expect(getJson.invoice.invoiceNumber).toBe(json.invoice.invoiceNumber);
     });
   });
 });

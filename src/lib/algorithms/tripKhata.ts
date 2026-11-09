@@ -61,3 +61,12 @@ export function calculateTripKhata(
     profitMarginPercent,
   };
 }
+
+export type KhataCashStatus = 'safe' | 'exhausted' | 'overspent';
+
+export function getKhataCashStatus(remainingCash: number): KhataCashStatus {
+  if (remainingCash < 0) return 'overspent';
+  if (remainingCash === 0) return 'exhausted';
+  return 'safe';
+}
+

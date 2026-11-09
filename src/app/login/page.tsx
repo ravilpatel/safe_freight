@@ -166,7 +166,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                placeholder="balwinder@wifl.in"
+                placeholder="operations@logistics.in"
               />
             </div>
             <div>
@@ -228,7 +228,7 @@ export default function LoginPage() {
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
                 className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                placeholder="Western India Fleet Logistics"
+                placeholder="Western Express Logistics Pvt Ltd"
               />
             </div>
 
@@ -242,7 +242,7 @@ export default function LoginPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                placeholder="Balwinder Singh"
+                placeholder="Fleet Operations Manager"
               />
             </div>
 
@@ -256,7 +256,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                placeholder="balwinder@wifl.in"
+                placeholder="operations@logistics.in"
               />
             </div>
 
@@ -313,7 +313,7 @@ export default function LoginPage() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                placeholder="Ramesh Patel"
+                placeholder="Assigned Commercial Driver"
               />
             </div>
 
@@ -327,7 +327,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 border border-neutral-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                placeholder="ramesh.driver@wifl.in"
+                placeholder="driver@logistics.in"
               />
             </div>
 

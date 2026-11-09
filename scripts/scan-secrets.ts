@@ -10,6 +10,7 @@ interface SecretScanViolation {
 }
 
 const SRC_DIR = path.resolve(process.cwd(), 'src');
+const NEXT_STATIC_DIR = path.resolve(process.cwd(), '.next/static');
 
 // Allowed server-only administrative client
 const ALLOWED_FILES = new Set([
@@ -25,7 +26,7 @@ const SECRET_PATTERNS = [
   {
     name: 'HARDCODED_SERVICE_ROLE_JWT',
     regex: /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
-    description: 'Hardcoded Supabase JWT token detected in source code',
+    description: 'Hardcoded Supabase JWT token detected in source code or static bundle',
   },
 ];
 
@@ -96,9 +97,35 @@ function scanDirectory(dir: string, violations: SecretScanViolation[]) {
   }
 }
 
+function scanStaticBundles(dir: string, violations: SecretScanViolation[]) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      scanStaticBundles(fullPath, violations);
+    } else if (entry.isFile() && /\.(js|mjs)$/.test(entry.name)) {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+
+      for (const pattern of SECRET_PATTERNS) {
+        if (pattern.regex.test(content)) {
+          violations.push({
+            file: path.relative(process.cwd(), fullPath),
+            line: 1,
+            match: '[STATIC_BUNDLE_SECRET_PATTERN_MATCH]',
+            rule: `${pattern.name} (CLIENT_STATIC_BUNDLE_LEAK)`,
+          });
+        }
+      }
+    }
+  }
+}
+
 export function runSecretScan(): boolean {
-  logger.info('Starting static secret scan across source files', {
+  logger.info('Starting static secret scan across source files and static bundles', {
     targetDir: 'src',
+    staticDir: fs.existsSync(NEXT_STATIC_DIR) ? '.next/static' : 'not_built_yet',
     whitelisted: Array.from(ALLOWED_FILES).map((f) => path.relative(process.cwd(), f)),
   });
 
@@ -109,6 +136,10 @@ export function runSecretScan(): boolean {
   } else {
     logger.warn('Source directory src does not exist yet');
     return true;
+  }
+
+  if (fs.existsSync(NEXT_STATIC_DIR)) {
+    scanStaticBundles(NEXT_STATIC_DIR, violations);
   }
 
   if (violations.length > 0) {
@@ -122,6 +153,7 @@ export function runSecretScan(): boolean {
   logger.info('Static secret scan passed: No service-role key or token leaks found in client bundles/source.', {
     status: 'CLEAN',
     filesScannedDir: 'src',
+    staticScanned: fs.existsSync(NEXT_STATIC_DIR),
   });
   return true;
 }

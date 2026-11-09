@@ -27,9 +27,11 @@ export function calculate3WayRoutes(
   isInterstate: boolean = false,
   distanceOverrideKm?: number
 ): RouteOption[] {
-  // Baseline corridor distance fallback if <= 0 or missing
+  // Baseline corridor distance fallback if <= 0 or missing or non-finite
   const baselineDistance =
-    distanceOverrideKm && distanceOverrideKm > 0 ? distanceOverrideKm : 480;
+    typeof distanceOverrideKm === 'number' && Number.isFinite(distanceOverrideKm) && distanceOverrideKm > 0
+      ? distanceOverrideKm
+      : 480;
 
   const stateTaxINR = isInterstate ? 450 : 0;
   const dieselRate = 92;

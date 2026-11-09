@@ -67,6 +67,7 @@ export class IdempotencyManager {
 
 // Global singleton idempotency store for runtime reuse
 export const globalIdempotencyStore = new IdempotencyManager();
+export const idempotencyManager = globalIdempotencyStore;
 
 /**
  * Extracts Idempotency-Key header from request.

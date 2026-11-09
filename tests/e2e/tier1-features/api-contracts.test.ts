@@ -31,10 +31,10 @@ describe('Tier 1: Feature Coverage — Enterprise REST API Contracts & Idempoten
     // Authoritative Requirement: PRD v4.0.0 §8
     const db = new MultiTenantDatabaseSimulator();
     const session: SessionContext = {
-      userId: 'driver-ramesh-1',
+      userId: 'driver-commercial-1',
       tenantId: 'org-wifl-1',
       role: 'driver',
-      email: 'ramesh@wifl.in',
+      email: 'driver1@wifl.in',
     };
 
     const idempotencyKey = '550e8400-e29b-41d4-a716-446655440000';
